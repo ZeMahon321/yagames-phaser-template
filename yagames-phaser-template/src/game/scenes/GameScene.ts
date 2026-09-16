@@ -9,6 +9,7 @@ import { YaGamesApi } from "@/api/YaGamesApi";
 import { DeviceInfo } from "@/utils/DeviceInfo";
 import { AdMng } from "../mng/AdMng";
 import { AdShower, AdShowerEvent } from "../gui/AdShower";
+import { Ally, Enemy } from "@/data/Entities";
 
 const CURT_DUR = 750;
 const UNIT_COST = 100;
@@ -36,13 +37,17 @@ export default class GameScene extends Phaser.Scene {
     // текстовые подписи к кнопкам
     private _btnLabels: Phaser.GameObjects.Text[] = [];
 
-    private _enemiesContainer: Phaser.GameObjects.Container;
-    private _enemySprites: Phaser.GameObjects.Graphics[] = [];
-    private _enemyTexts: Phaser.GameObjects.Text[] = [];
-    private _heroSprite: Phaser.GameObjects.Graphics;
-    private _heroHpBar: Phaser.GameObjects.Graphics;
-    private _heroHpText: Phaser.GameObjects.Text;
-    private _alliesContainer: Phaser.GameObjects.Container;
+    // Сущности на поле боя
+    private _allies: Ally[] = [];
+    private _enemies: Enemy[] = [];
+    private _hero: Ally | null = null;
+
+    // Клавиатура
+    private _cursors: Phaser.Types.Input.Keyboard.CursorKeys | null = null;
+    private _keyW: Phaser.Input.Keyboard.Key | null = null;
+    private _keyA: Phaser.Input.Keyboard.Key | null = null;
+    private _keyS: Phaser.Input.Keyboard.Key | null = null;
+    private _keyD: Phaser.Input.Keyboard.Key | null = null;
 
     // таймер автосохранения
     private _saveTimer = 0;
@@ -64,6 +69,14 @@ export default class GameScene extends Phaser.Scene {
         this._isTransit = true;
         SndMng.scene = this;
         this.cameras.main.centerOn(0, 0);
+
+        // Клавиатура
+        const keyboard = this.input.keyboard!;
+        this._cursors = keyboard.createCursorKeys();
+        this._keyW = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
+        this._keyA = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
+        this._keyS = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
+        this._keyD = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
 
         GameData.getInstance().load();
 
@@ -102,34 +115,29 @@ export default class GameScene extends Phaser.Scene {
         this._dummy.add(this._unitsText);
 
         // === Поле боя ===
-        // Контейнер союзников (герой + юниты)
-        this._alliesContainer = this.add.container(-800, 0);
-        this._dummy.add(this._alliesContainer);
-
-        // Герой
-        this._heroSprite = this.add.graphics();
-        this._alliesContainer.add(this._heroSprite);
-
-        // HP бар героя
-        this._heroHpBar = this.add.graphics();
-        this._alliesContainer.add(this._heroHpBar);
-
+        // Создаём героя
+        const heroStats = { hp: 200, damage: 15 };
+        this._hero = new Ally(UnitType.Warrior, 1, -600, 0, heroStats.hp, heroStats.damage);
+        this._allies.push(this._hero);
+        
+        // HP бар героя (отдельный graphics)
+        this._hero.hpBar = this.add.graphics();
+        this._dummy.add(this._hero.hpBar);
+        
         // HP текст над героем
-        this._heroHpText = new Phaser.GameObjects.Text(this, -800, Config.GH_HALF - 220,
-            '', { font: "24px Ubuntu", align: 'center' })
+        this._hero.hpText = this.add.text(-600, -80, '', { font: "20px Ubuntu", color: '#33ff33' })
             .setOrigin(0.5)
-            .setColor('#33ff33');
-        this._heroHpText.setStroke('#000000', 4);
-        this._dummy.add(this._heroHpText);
+            .setStroke('#000000', 3);
+        this._dummy.add(this._hero.hpText);
+        
+        // Графика героя
+        this._hero.graphics = this.add.graphics();
+        this._dummy.add(this._hero.graphics);
 
-        // Контейнер врагов
-        this._enemiesContainer = this.add.container(800, 0);
-        this._dummy.add(this._enemiesContainer);
-
-        // === Кнопки с подписями ===
+        // === Кнопки с подписями (уменьшенные) ===
         const btnY = Config.GH_HALF - 80;
-        const sc = Math.min(1.0, Params.gameWidth / 500);
-        const labelSc = Math.min(0.7, Params.gameWidth / 700);
+        const sc = Math.min(0.5, Params.gameWidth / 1000);
+        const labelSc = Math.min(1.4, Params.gameWidth / 350);
 
         // Покупка юнитов
         this._btnBuyWarrior = new MyButton(this, -200, btnY, 'game', 'Button_016', sc);
@@ -189,7 +197,7 @@ export default class GameScene extends Phaser.Scene {
         GameData.getInstance().on('unitsChanged', this.updateUnits, this);
         GameData.getInstance().on('heroChanged', this.updateHero, this);
         GameData.getInstance().on('waveStarted', this.onWaveStarted, this);
-        GameData.getInstance().on('enemiesChanged', this.updateEnemiesDisplay, this);
+        GameData.getInstance().on('enemiesChanged', this.onWaveStarted, this);
         GameData.getInstance().on('waveEnded', this.onWaveEnded, this);
         GameData.getInstance().on('waveLost', this.onWaveLost, this);
 
@@ -238,36 +246,19 @@ export default class GameScene extends Phaser.Scene {
     }
 
     private updateHero() {
+        if (!this._hero) return;
         const d = GameData.getInstance();
         const curHp = d.getHeroCurrentHealth();
         const maxHp = d.getHeroHealth();
         
+        // Обновляем HP героя в сущности
+        this._hero.currentHp = curHp;
+        this._hero.maxHp = maxHp;
+        this._hero.damage = d.getHeroDamage();
+        
         // Текст HP над героем
-        this._heroHpText.text = `${curHp}/${maxHp} ❤️`;
-        this._heroHpText.setColor(curHp / maxHp > 0.3 ? '#33ff33' : '#ff3333');
-        
-        // Рисуем героя
-        this._heroSprite.clear();
-        // Тело героя (синий рыцарь)
-        this._heroSprite.fillStyle(0x3366cc);
-        this._heroSprite.fillRoundedRect(-825, Config.GH_HALF - 55, 50, 70, 8);
-        // Шлем
-        this._heroSprite.fillStyle(0x6699ff);
-        this._heroSprite.fillRoundedRect(-820, Config.GH_HALF - 60, 40, 25, 6);
-        // Меч
-        this._heroSprite.fillStyle(0xcccccc);
-        this._heroSprite.fillRect(-800, Config.GH_HALF - 40, 6, 40);
-        
-        // HP бар над героем
-        this._heroHpBar.clear();
-        const barX = -835;
-        const barY = Config.GH_HALF - 75;
-        const barW = 70;
-        const barH = 10;
-        this._heroHpBar.fillStyle(0x000000);
-        this._heroHpBar.fillRoundedRect(barX - 1, barY - 1, barW + 2, barH + 2, 3);
-        this._heroHpBar.fillStyle(curHp / maxHp > 0.3 ? 0x33cc33 : 0xcc3333);
-        this._heroHpBar.fillRoundedRect(barX, barY, barW * (curHp / maxHp), barH, 2);
+        this._hero.hpText!.text = `${curHp}/${maxHp}`;
+        this._hero.hpText!.setColor(curHp / maxHp > 0.3 ? '#33ff33' : '#ff3333');
     }
 
     private updateWaveText() {
@@ -285,6 +276,20 @@ export default class GameScene extends Phaser.Scene {
         }
         if (gd.spendCoins(UNIT_COST)) {
             gd.addUnit(type);
+            
+            // Создаём визуального юнита
+            const stats = GameData.getUnitStats(type, 1);
+            const ally = new Ally(type, 1, -700, Math.random() * 200 - 100, stats.hp, stats.damage);
+            ally.graphics = this.add.graphics();
+            this._dummy.add(ally.graphics);
+            ally.hpBar = this.add.graphics();
+            this._dummy.add(ally.hpBar);
+            ally.hpText = this.add.text(ally.x, ally.y - 40, '', { font: "14px Ubuntu", color: '#33ff33' })
+                .setOrigin(0.5)
+                .setStroke('#000000', 2);
+            this._dummy.add(ally.hpText);
+            this._allies.push(ally);
+            
             gd.save();
         } else {
             console.log('Недостаточно монет');
@@ -328,71 +333,79 @@ export default class GameScene extends Phaser.Scene {
     }
 
     private onWaveStarted() {
-        this.updateWaveText();
-        this.updateEnemiesDisplay();
-    }
-
-    private updateEnemiesDisplay() {
-        const gd = GameData.getInstance();
-        const enemies = gd.getEnemies();
-
-        // Удаляем старые спрайты и тексты
-        this._enemySprites.forEach(s => s.destroy());
-        this._enemySprites = [];
-        this._enemyTexts.forEach(t => t.destroy());
-        this._enemyTexts = [];
-
-        const startX = 800;
-        const spacing = Math.min(90, 600 / Math.max(enemies.length, 1));
+            // Очищаем старых врагов
+        this._enemies.forEach(e => {
+            if (e.graphics) e.graphics.destroy();
+            if (e.hpBar) e.hpBar.destroy();
+            if (e.hpText) e.hpText.destroy();
+        });
+        this._enemies = [];
         
-        for (let i = 0; i < enemies.length; i++) {
-            const e = enemies[i];
-            const g = this.add.graphics();
-            const x = startX + i * spacing;
-            const y = 0;
-
-            // цвет зависит от типа монстра
-            let color: number;
-            switch (e.type) {
-                case 0 /* Goblin */: color = 0x44cc44; break;
-                case 1 /* Skeleton */: color = 0xcccccc; break;
-                case 2 /* Orc */: color = 0x884444; break;
-                default: color = 0xcc3333;
-            }
-            g.fillStyle(color);
-            g.fillRoundedRect(x - 18, y - 18, 36, 36, 6);
-
-            const hpRatio = e.hp / e.maxHp;
-            g.fillStyle(0x000000);
-            g.fillRect(x - 22, y - 30, 44, 6);
-            g.fillStyle(0x33cc33);
-            g.fillRect(x - 22, y - 30, 44 * hpRatio, 6);
-
-            this._enemiesContainer.add(g);
-            this._enemySprites.push(g);
-
-            // Текст HP над врагом
-            const hpText = this.add.text(x, y - 40, `${e.hp}`, { font: "18px Ubuntu", color: '#ffffff' }).setOrigin(0.5).setStroke('#000000', 3);
-            this._dummy.add(hpText);
-            this._enemyTexts.push(hpText);
+        // Создаём новых врагов как сущности
+        const gd = GameData.getInstance();
+        const enemyData = gd.getEnemies();
+        
+        const startX = 600;
+        const spacing = Math.min(80, 500 / Math.max(enemyData.length, 1));
+        
+        for (let i = 0; i < enemyData.length; i++) {
+            const ed = enemyData[i];
+            const enemy = new Enemy(ed.type, startX + i * spacing, 0, ed.maxHp, ed.damage);
+            
+            // Графика
+            enemy.graphics = this.add.graphics();
+            this._dummy.add(enemy.graphics);
+            
+            // HP бар
+            enemy.hpBar = this.add.graphics();
+            this._dummy.add(enemy.hpBar);
+            
+            // HP текст
+            enemy.hpText = this.add.text(startX + i * spacing, -60, '', { font: "16px Ubuntu", color: '#ffffff' })
+                .setOrigin(0.5)
+                .setStroke('#000000', 2);
+            this._dummy.add(enemy.hpText);
+            
+            this._enemies.push(enemy);
         }
+        
+        this.updateWaveText();
     }
 
     private onWaveEnded(reward: number) {
         this.updateWaveText();
-        this.updateEnemiesDisplay();
         console.log(`Волна пройдена! Награда: ${reward} монет`);
+        
+        // Восстанавливаем HP союзникам
+        this._allies.forEach(ally => ally.heal(ally.getMaxHp()));
+        if (this._hero) {
+            GameData.getInstance().regenerateHeroHP();
+        }
     }
 
     private onWaveLost() {
         this.updateWaveText();
-        this.updateEnemiesDisplay();
         console.log('Волна проиграна — герой погиб!');
     }
 
     private onReset() {
         if (this._isTransit) return;
         if (confirm('Сбросить весь прогресс?')) {
+            // Очищаем сущности
+            this._allies.forEach(a => {
+                if (a.graphics) a.graphics.destroy();
+                if (a.hpBar) a.hpBar.destroy();
+                if (a.hpText) a.hpText.destroy();
+            });
+            this._enemies.forEach(e => {
+                if (e.graphics) e.graphics.destroy();
+                if (e.hpBar) e.hpBar.destroy();
+                if (e.hpText) e.hpText.destroy();
+            });
+            this._allies = [];
+            this._enemies = [];
+            this._hero = null;
+            
             GameData.getInstance().reset();
             this.updateCoins();
             this.updateUnits();
@@ -401,53 +414,113 @@ export default class GameScene extends Phaser.Scene {
         }
     }
 
-    // === Бой ===
-    private doCombatTick() {
+    // === Бой (real-time) ===
+    private updateEntities(dt: number) {
         const gd = GameData.getInstance();
-        const enemies = gd.getEnemies();
-        if (enemies.length === 0) {
+        if (!gd.isWaveActive()) return;
+        
+        // Фильтруем мёртвых
+        this._allies = this._allies.filter(a => a.isAlive());
+        this._enemies = this._enemies.filter(e => e.isAlive());
+        
+        // Обновляем союзников
+        for (const ally of this._allies) {
+            // Герой управляется клавиатурой
+            if (ally === this._hero) {
+                this.handleHeroInput(dt);
+            }
+            // Остальные идут к ближайшему врагу
+            ally.update(dt, this._enemies, this);
+        }
+        
+        // Обновляем врагов
+        for (const enemy of this._enemies) {
+            enemy.update(dt, this._allies, this);
+        }
+        
+        // Проверяем конец волны
+        if (this._enemies.length === 0 && this._allies.length > 0) {
             gd.endWave();
-            return;
         }
-
-        // Атака героя и юнитов
-        let totalDamage = gd.getHeroDamage();
-        for (const unit of gd.units) {
-            const stats = GameData.getUnitStats(unit.type, unit.level);
-            totalDamage += stats.damage;
+        
+        // Проверяем поражение
+        if (this._allies.length === 0 || (this._hero && !this._hero.isAlive())) {
+            gd.waveLost();
         }
-
-        let dmgLeft = totalDamage;
-        while (dmgLeft > 0 && gd.getEnemies().length > 0) {
-            const target = gd.getEnemies()[0];
-            if (target.hp <= dmgLeft) {
-                dmgLeft -= target.hp;
-                gd.damageEnemy(0, target.hp);
-            } else {
-                gd.damageEnemy(0, dmgLeft);
-                dmgLeft = 0;
+        
+        // Обновляем данные героя в GameData
+        if (this._hero) {
+            // Герой получает урон через метод
+        }
+    }
+    
+    /** Обработка ввода героя (WASD) */
+    private handleHeroInput(dt: number) {
+        const speed = 150 * dt; // пикселей за кадр
+        
+        if (Phaser.Input.Keyboard.JustDown(this._keyW!)) this._hero!.y -= speed;
+        if (Phaser.Input.Keyboard.JustDown(this._keyS!)) this._hero!.y += speed;
+        if (Phaser.Input.Keyboard.JustDown(this._keyA!)) this._hero!.x -= speed;
+        if (Phaser.Input.Keyboard.JustDown(this._keyD!)) this._hero!.x += speed;
+        
+        // Ограничиваем позицию
+        this._hero!.x = Phaser.Math.Clamp(this._hero!.x, -1100, -200);
+        this._hero!.y = Phaser.Math.Clamp(this._hero!.y, -400, 400);
+    }
+    
+    /** Отрисовка всех сущностей */
+    private renderEntities() {
+        // Союзники
+        for (const ally of this._allies) {
+            ally.render(this);
+            
+            // HP бар
+            if (ally.hpBar) {
+                ally.hpBar.clear();
+                const barX = ally.x - 20;
+                const barY = ally.y - 30;
+                const barW = 40;
+                const barH = 6;
+                const hpPercent = ally.getHpPercent();
+                
+                ally.hpBar.fillStyle(0x000000);
+                ally.hpBar.fillRoundedRect(barX - 1, barY - 1, barW + 2, barH + 2, 3);
+                ally.hpBar.fillStyle(hpPercent > 0.3 ? 0x33cc33 : 0xcc3333);
+                ally.hpBar.fillRoundedRect(barX, barY, barW * hpPercent, barH, 2);
+            }
+            
+            // HP текст
+            if (ally.hpText) {
+                ally.hpText.setPosition(ally.x, ally.y - 40);
+                ally.hpText.setText(`${Math.ceil(ally.currentHp)}/${ally.maxHp}`);
+                ally.hpText.setColor(ally.getHpPercent() > 0.3 ? '#33ff33' : '#ff3333');
             }
         }
-
-        // Контратака врагов
-        this.doCounterAttack();
-    }
-
-    private doCounterAttack() {
-        const gd = GameData.getInstance();
-        const enemies = gd.getEnemies();
-        if (enemies.length === 0) return;
-
-        // Суммарный урон всех живых врагов
-        let totalEnemyDamage = 0;
-        for (const enemy of enemies) {
-            totalEnemyDamage += enemy.damage;
-        }
-
-        // Герой получает урон
-        const killed = gd.heroTakeDamage(totalEnemyDamage);
-        if (killed) {
-            gd.waveLost();
+        
+        // Враги
+        for (const enemy of this._enemies) {
+            enemy.render(this);
+            
+            // HP бар
+            if (enemy.hpBar) {
+                enemy.hpBar.clear();
+                const barX = enemy.x - 20;
+                const barY = enemy.y - 30;
+                const barW = 40;
+                const barH = 6;
+                const hpPercent = enemy.getHpPercent();
+                
+                enemy.hpBar.fillStyle(0x000000);
+                enemy.hpBar.fillRoundedRect(barX - 1, barY - 1, barW + 2, barH + 2, 3);
+                enemy.hpBar.fillStyle(hpPercent > 0.3 ? 0x33cc33 : 0xcc3333);
+                enemy.hpBar.fillRoundedRect(barX, barY, barW * hpPercent, barH, 2);
+            }
+            
+            // HP текст
+            if (enemy.hpText) {
+                enemy.hpText.setPosition(enemy.x, enemy.y - 40);
+                enemy.hpText.setText(`${Math.ceil(enemy.currentHp)}`);
+            }
         }
     }
 
@@ -463,15 +536,11 @@ export default class GameScene extends Phaser.Scene {
             GameData.getInstance().save();
         }
 
-        // бой
-        const gd = GameData.getInstance();
-        if (gd.isWaveActive()) {
-            this._combatTimer += dt;
-            if (this._combatTimer >= this._combatInterval) {
-                this._combatTimer -= this._combatInterval;
-                this.doCombatTick();
-            }
-        }
+        // real-time бой
+        this.updateEntities(dt);
+        
+        // Отрисовка
+        this.renderEntities();
     }
 
     shutdown() {
