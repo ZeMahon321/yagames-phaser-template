@@ -44,7 +44,8 @@ export default class Boot extends Phaser.Scene {
                 // test param
                 keys: ['goto'],
                 onReadHandler: (aValue: string) => {
-                    GameData.getInstance().setAnekdotId(Number(aValue) - 1);
+                    localStorage.removeItem('idle_save');
+                    GameData.getInstance().load(); // перезагрузит нулевые значения;
                 }
             }
         ];

@@ -43,7 +43,7 @@ export default class Preloader extends Phaser.Scene {
         this._dummy = this.add.container();
 
         this._title = new Phaser.GameObjects.Text(this, Config.GW_HALF, Config.GH_HALF - 170,
-            'Анекдоты',
+            'Idle Army',
             { font: "100px Ubuntu", align: 'center' })
             .setOrigin(0.5)
             .setColor('#dddddd');
@@ -51,7 +51,7 @@ export default class Preloader extends Phaser.Scene {
         this._dummy.add(this._title);
 
         this._subTitle = new Phaser.GameObjects.Text(this, Config.GW_HALF, this._title.y + 110,
-            'чёрный юмор',
+            'Fantasy Conquest',
             { font: "60px Ubuntu", align: 'center' })
             .setOrigin(0.5)
             .setColor('#dddddd');

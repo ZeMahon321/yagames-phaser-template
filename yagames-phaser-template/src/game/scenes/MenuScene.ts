@@ -57,7 +57,7 @@ export default class MenuScene extends Phaser.Scene {
         this._dummyBot = this.add.container();
 
         this._title = new Phaser.GameObjects.Text(this, 0, -Config.GH_HALF + 80,
-            'Анекдоты',
+            'Idle Army',
             { font: "90px Ubuntu", align: 'center' })
             .setOrigin(0.5)
             .setColor('#dddddd');
@@ -67,7 +67,7 @@ export default class MenuScene extends Phaser.Scene {
         this._titleWidth = this._title.width;
 
         this._subTitle = new Phaser.GameObjects.Text(this, 0, this._title.y + 100,
-            'чёрный юмор',
+            'Fantasy Conquest',
             { font: "60px Ubuntu", align: 'center' })
             .setOrigin(0.5)
             .setColor('#dddddd');
