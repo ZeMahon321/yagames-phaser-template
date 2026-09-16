@@ -61,4 +61,9 @@ export class MyButton extends Phaser.GameObjects.Container {
         this._dummy.setScale(this._scale);
     }
 
+    setDisabled(disabled: boolean) {
+        this._img.input.enabled = !disabled;
+        this._img.alpha = disabled ? 0.4 : 1;
+    }
+
 }

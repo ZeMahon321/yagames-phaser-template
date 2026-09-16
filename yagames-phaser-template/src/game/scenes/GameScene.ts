@@ -63,6 +63,9 @@ export default class GameScene extends Phaser.Scene {
     private _counterAttackTimer = 0;
     private readonly _counterAttackInterval = 1.0;
 
+    // Состояние игры: pre-battle (покупки), battle (бой), post-battle (результат)
+    private _gameState: 'pre-battle' | 'battle' | 'post-battle' = 'pre-battle';
+
     constructor() {
         super(SceneName.Game);
     }
@@ -208,6 +211,7 @@ export default class GameScene extends Phaser.Scene {
         this.updateUnits();
         this.updateHero();
         this.updateWaveText();
+        this.updateButtonsState();
 
         // черный занавес
         this.blackCurtain = this.add.graphics();
@@ -262,12 +266,25 @@ export default class GameScene extends Phaser.Scene {
 
     private updateWaveText() {
         const d = GameData.getInstance();
-        this._waveText.text = `Волна ${d.getWave()} | Убито: ${d.getEnemiesKilled()}`;
+        this._waveText.text = `Волна ${d.getWave()}`;
+    }
+
+    /** Обновить состояние кнопок (вкл/выкл) */
+    private updateButtonsState() {
+        const inBattle = this._gameState !== 'pre-battle';
+        
+        this._btnBuyWarrior.setDisabled(inBattle);
+        this._btnBuyArcher.setDisabled(inBattle);
+        this._btnDamage.setDisabled(inBattle);
+        this._btnHealth.setDisabled(inBattle);
+        this._btnMergeWarrior.setDisabled(inBattle);
+        this._btnMergeArcher.setDisabled(inBattle);
+        this._btnStartWave.setDisabled(!inBattle);
     }
 
     // === Покупка юнита ===
     private onBuyUnit(type: UnitType) {
-        if (this._isTransit) return;
+        if (this._isTransit || this._gameState !== 'pre-battle') return;
         const gd = GameData.getInstance();
         if (gd.getTotalUnits() >= gd.getMaxUnits()) {
             console.log('Максимум юнитов!');
@@ -297,7 +314,7 @@ export default class GameScene extends Phaser.Scene {
 
     // === Прокачка героя ===
     private onUpgradeDamage() {
-        if (this._isTransit) return;
+        if (this._isTransit || this._gameState !== 'pre-battle') return;
         if (GameData.getInstance().upgradeDamage()) {
             GameData.getInstance().save();
             this.updateHero();
@@ -305,7 +322,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     private onUpgradeHealth() {
-        if (this._isTransit) return;
+        if (this._isTransit || this._gameState !== 'pre-battle') return;
         if (GameData.getInstance().upgradeHealth()) {
             GameData.getInstance().save();
             this.updateHero();
@@ -314,7 +331,7 @@ export default class GameScene extends Phaser.Scene {
 
     // === Объединение юнитов ===
     private onMerge(type: UnitType) {
-        if (this._isTransit) return;
+        if (this._isTransit || this._gameState !== 'pre-battle') return;
         const gd = GameData.getInstance();
         if (gd.merge(type)) {
             gd.save();
@@ -325,9 +342,11 @@ export default class GameScene extends Phaser.Scene {
 
     // === Волна ===
     private onStartWave() {
-        if (this._isTransit) return;
+        if (this._isTransit || this._gameState !== 'pre-battle') return;
         const gd = GameData.getInstance();
         if (gd.isWaveActive()) return;
+        
+        this._gameState = 'battle';
         gd.startWave();
     }
 
@@ -435,11 +454,17 @@ export default class GameScene extends Phaser.Scene {
         if (this._hero) {
             GameData.getInstance().regenerateHeroHP();
         }
+        
+        // Автоматически возвращаемся в pre-battle
+        this._gameState = 'pre-battle';
     }
 
     private onWaveLost() {
         this.updateWaveText();
         console.log('Волна проиграна — все союзники погибли!');
+        
+        // Автоматически возвращаемся в pre-battle
+        this._gameState = 'pre-battle';
     }
 
     private onReset() {
@@ -473,6 +498,35 @@ export default class GameScene extends Phaser.Scene {
         const gd = GameData.getInstance();
         if (!gd.isWaveActive()) return;
         
+        // Коллизия между союзниками
+        for (let i = 0; i < this._allies.length; i++) {
+            for (let j = i + 1; j < this._allies.length; j++) {
+                this._allies[i].resolveCollision(this._allies[j]);
+            }
+        }
+        
+        // Коллизия между врагами
+        for (let i = 0; i < this._enemies.length; i++) {
+            for (let j = i + 1; j < this._enemies.length; j++) {
+                this._enemies[i].resolveCollision(this._enemies[j]);
+            }
+        }
+        
+        // Коллизия герой-враги
+        if (this._hero) {
+            for (const enemy of this._enemies) {
+                this._hero.resolveCollision(enemy);
+            }
+        }
+        
+        // Коллизия юниты-враги
+        for (const ally of this._allies) {
+            if (ally === this._hero) continue;
+            for (const enemy of this._enemies) {
+                ally.resolveCollision(enemy);
+            }
+        }
+        
         // Обновляем союзников
         for (const ally of this._allies) {
             // Герой управляется только клавиатурой (НЕ движется к врагам)
@@ -491,14 +545,7 @@ export default class GameScene extends Phaser.Scene {
         }
         
         // Мёртвых юнитов НЕ удаляем из массива — они возродятся на следующей волне
-        // Но уничтожаем их графику, чтобы не отображались
-        for (const ally of this._allies) {
-            if (!ally.isAlive()) {
-                if (ally.graphics) { ally.graphics.destroy(); ally.graphics = null; }
-                if (ally.hpBar) { ally.hpBar.destroy(); ally.hpBar = null; }
-                if (ally.hpText) { ally.hpText.destroy(); ally.hpText = null; }
-            }
-        }
+        // Графику НЕ уничтожаем — она нужна для pre-battle отображения
         
         const aliveEnemies: Enemy[] = [];
         for (const enemy of this._enemies) {
@@ -650,6 +697,11 @@ export default class GameScene extends Phaser.Scene {
         
         // Отрисовка
         this.renderEntities();
+        
+        // Отрисовка сущностей в pre-battle режиме (стоят на месте)
+        if (this._gameState === 'pre-battle') {
+            this.renderPreBattleEntities();
+        }
     }
 
     shutdown() {
@@ -691,5 +743,91 @@ export default class GameScene extends Phaser.Scene {
     private onAdShow() {
         this._adShower.visible = false;
         AdMng.getInstance().showInterstitial(this.game, () => {}, () => {}, this);
+    }
+
+    /** Отрисовка сущностей в pre-battle режиме (стоят на месте) */
+    private renderPreBattleEntities() {
+        const gd = GameData.getInstance();
+        
+        // Обновляем позицию героя (слева)
+        if (this._hero) {
+            this._hero.x = HERO_START_X;
+            this._hero.y = HERO_START_Y;
+            this._hero.currentHp = gd.getHeroCurrentHealth();
+            this._hero.maxHp = gd.getHeroHealth();
+            this._hero.damage = gd.getHeroDamage();
+            this.renderSingleAlly(this._hero);
+        }
+        
+        // Позиционируем всех юнитов в колонку слева
+        let unitIndex = 0;
+        for (const ally of this._allies) {
+            if (ally === this._hero) continue;
+            
+            const spacingY = 30;
+            const startY = -((gd.units.length - 1) * spacingY) / 2;
+            ally.x = HERO_START_X - 100;
+            ally.y = startY + unitIndex * spacingY;
+            
+            // Восстанавливаем HP из статов (в pre-battle HP всегда полный)
+            const stats = GameData.getUnitStats(ally.type, ally.level);
+            ally.currentHp = stats.hp;
+            ally.maxHp = stats.hp;
+            ally.damage = stats.damage;
+            
+            // Если нет графики — создаём
+            if (!ally.graphics) {
+                ally.graphics = this.add.graphics();
+                this._dummy.add(ally.graphics);
+            }
+            if (!ally.hpBar) {
+                ally.hpBar = this.add.graphics();
+                this._dummy.add(ally.hpBar);
+            }
+            if (!ally.hpText) {
+                ally.hpText = this.add.text(ally.x, ally.y - 40, '', { font: "14px Ubuntu", color: '#33ff33' })
+                    .setOrigin(0.5)
+                    .setStroke('#000000', 2);
+                this._dummy.add(ally.hpText);
+            }
+            
+            this.renderSingleAlly(ally);
+            unitIndex++;
+        }
+    }
+
+    /** Отрисовать одного союзника */
+    private renderSingleAlly(ally: Ally) {
+        if (!ally.graphics) return;
+        
+        // Позиционируем graphics
+        ally.graphics.clear();
+        ally.graphics.x = ally.x;
+        ally.graphics.y = ally.y;
+        ally.render(this);
+        
+        // HP бар
+        if (ally.hpBar) {
+            ally.hpBar.clear();
+            ally.hpBar.x = ally.x;
+            ally.hpBar.y = ally.y;
+            const barX = -20;
+            const barY = -30;
+            const barW = 40;
+            const barH = 6;
+            const hpPercent = ally.getHpPercent();
+            
+            ally.hpBar.fillStyle(0x000000);
+            ally.hpBar.fillRoundedRect(barX - 1, barY - 1, barW + 2, barH + 2, 3);
+            ally.hpBar.fillStyle(hpPercent > 0.3 ? 0x33cc33 : 0xcc3333);
+            ally.hpBar.fillRoundedRect(barX, barY, barW * hpPercent, barH, 2);
+        }
+        
+        // HP текст
+        if (ally.hpText) {
+            ally.hpText.setPosition(ally.x, ally.y - 40);
+            ally.hpText.setText(`${Math.ceil(ally.currentHp)}/${ally.maxHp}`);
+            ally.hpText.setColor(ally.getHpPercent() > 0.3 ? '#33ff33' : '#ff3333');
+        }
     }
 }

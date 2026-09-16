@@ -19,6 +19,9 @@ export abstract class Entity {
     /** Скорость движения */
     speed: number = 100; // пикселей в секунду
     
+    /** Радиус коллизии */
+    collisionRadius: number = 20;
+    
     /** Текущая цель атаки */
     public _target: Entity | null = null;
     
@@ -143,6 +146,26 @@ export abstract class Entity {
     /** Проверить, жив ли */
     isAlive(): boolean {
         return this.currentHp > 0;
+    }
+    
+    /** Разрешить коллизию между двумя сущностями */
+    resolveCollision(other: Entity): void {
+        const minDist = this.collisionRadius + other.collisionRadius;
+        const dx = other.x - this.x;
+        const dy = other.y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < minDist && dist > 0) {
+            const overlap = minDist - dist;
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const push = overlap / 2;
+            
+            this.x -= nx * push;
+            this.y -= ny * push;
+            other.x += nx * push;
+            other.y += ny * push;
+        }
     }
     
     /** Отрисовать */

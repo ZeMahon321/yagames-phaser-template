@@ -28,7 +28,7 @@ export class GameData extends Phaser.Events.EventEmitter {
     private static instance: GameData = null;
 
     // === Игровые данные ===
-    private _coins: number = 0;
+    private _coins: number = 500;
 
     // Герой — сильнее на старте
     private _heroDamage: number = 15;
