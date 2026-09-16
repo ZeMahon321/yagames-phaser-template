@@ -13,6 +13,8 @@ import { Ally, Enemy } from "@/data/Entities";
 
 const CURT_DUR = 750;
 const UNIT_COST = 100;
+const HERO_START_X = -600;
+const HERO_START_Y = 0;
 
 export default class GameScene extends Phaser.Scene {
     private _dummy: Phaser.GameObjects.Container;
@@ -246,7 +248,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     private updateHero() {
-        if (!this._hero) return;
+        if (!this._hero || !this._hero.graphics || !this._hero.hpBar || !this._hero.hpText) return;
         const d = GameData.getInstance();
         const curHp = d.getHeroCurrentHealth();
         const maxHp = d.getHeroHealth();
@@ -257,8 +259,8 @@ export default class GameScene extends Phaser.Scene {
         this._hero.damage = d.getHeroDamage();
         
         // Текст HP над героем
-        this._hero.hpText!.text = `${curHp}/${maxHp}`;
-        this._hero.hpText!.setColor(curHp / maxHp > 0.3 ? '#33ff33' : '#ff3333');
+        this._hero.hpText.text = `${curHp}/${maxHp}`;
+        this._hero.hpText.setColor(curHp / maxHp > 0.3 ? '#33ff33' : '#ff3333');
     }
 
     private updateWaveText() {
@@ -333,6 +335,12 @@ export default class GameScene extends Phaser.Scene {
     }
 
     private onWaveStarted() {
+        // Сбрасываем позицию героя на стартовую
+        if (this._hero) {
+            this._hero.x = HERO_START_X;
+            this._hero.y = HERO_START_Y;
+        }
+        
         // Очищаем старых врагов
         this._enemies.forEach(e => {
             if (e.graphics) e.graphics.destroy();
@@ -433,8 +441,8 @@ export default class GameScene extends Phaser.Scene {
         
         // Обновляем союзников
         for (const ally of this._allies) {
-            // Герой управляется клавиатурой
-            if (ally === this._hero) {
+            // Герой управляется клавиатурой (только если жив)
+            if (ally === this._hero && ally.isAlive()) {
                 this.handleHeroInput(dt);
             }
             // Остальные идут к ближайшему врагу
@@ -503,13 +511,21 @@ export default class GameScene extends Phaser.Scene {
     private renderEntities() {
         // Союзники
         for (const ally of this._allies) {
-            ally.render(this);
+            // Позиционируем graphics
+            if (ally.graphics) {
+                ally.graphics.clear();
+                ally.graphics.x = ally.x;
+                ally.graphics.y = ally.y;
+                ally.render(this);
+            }
             
             // HP бар
             if (ally.hpBar) {
                 ally.hpBar.clear();
-                const barX = ally.x - 20;
-                const barY = ally.y - 30;
+                ally.hpBar.x = ally.x;
+                ally.hpBar.y = ally.y;
+                const barX = -20;
+                const barY = -30;
                 const barW = 40;
                 const barH = 6;
                 const hpPercent = ally.getHpPercent();
@@ -530,13 +546,21 @@ export default class GameScene extends Phaser.Scene {
         
         // Враги
         for (const enemy of this._enemies) {
-            enemy.render(this);
+            // Позиционируем graphics
+            if (enemy.graphics) {
+                enemy.graphics.clear();
+                enemy.graphics.x = enemy.x;
+                enemy.graphics.y = enemy.y;
+                enemy.render(this);
+            }
             
             // HP бар
             if (enemy.hpBar) {
                 enemy.hpBar.clear();
-                const barX = enemy.x - 20;
-                const barY = enemy.y - 30;
+                enemy.hpBar.x = enemy.x;
+                enemy.hpBar.y = enemy.y;
+                const barX = -20;
+                const barY = -30;
                 const barW = 40;
                 const barH = 6;
                 const hpPercent = enemy.getHpPercent();

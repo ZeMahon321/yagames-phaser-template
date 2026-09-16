@@ -181,13 +181,13 @@ export class Ally extends Entity {
             color = 0xcccc44; // Жёлтый для лучника
         }
         
-        // Тело
+        // Тело (рисуем относительно 0,0 — graphics уже позиционирован)
         this.graphics.fillStyle(color);
-        this.graphics.fillRoundedRect(this.x - 15, this.y - 15, 30, 30, 6);
+        this.graphics.fillRoundedRect(-15, -15, 30, 30, 6);
         
         // Обводка по уровню
         this.graphics.lineStyle(2, 0xffffff);
-        this.graphics.strokeRoundedRect(this.x - 15, this.y - 15, 30, 30, 6);
+        this.graphics.strokeRoundedRect(-15, -15, 30, 30, 6);
     }
 }
 
@@ -233,12 +233,12 @@ export class Enemy extends Entity {
             default: color = 0xcc3333;
         }
         
-        // Тело
+        // Тело (рисуем относительно 0,0 — graphics уже позиционирован)
         this.graphics.fillStyle(color);
-        this.graphics.fillRoundedRect(this.x - 18, this.y - 18, 36, 36, 6);
+        this.graphics.fillRoundedRect(-18, -18, 36, 36, 6);
         
         // Обводка
         this.graphics.lineStyle(2, 0x000000);
-        this.graphics.strokeRoundedRect(this.x - 18, this.y - 18, 36, 36, 6);
+        this.graphics.strokeRoundedRect(-18, -18, 36, 36, 6);
     }
 }
