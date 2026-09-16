@@ -454,18 +454,19 @@ export default class GameScene extends Phaser.Scene {
         }
     }
     
-    /** Обработка ввода героя (WASD) */
+    /** Обработка ввода героя (WASD) — непрерывное движение при зажатой клавише */
     private handleHeroInput(dt: number) {
-        const speed = 150 * dt; // пикселей за кадр
+        const speed = 200 * dt; // пикселей за секунду
         
-        if (Phaser.Input.Keyboard.JustDown(this._keyW!)) this._hero!.y -= speed;
-        if (Phaser.Input.Keyboard.JustDown(this._keyS!)) this._hero!.y += speed;
-        if (Phaser.Input.Keyboard.JustDown(this._keyA!)) this._hero!.x -= speed;
-        if (Phaser.Input.Keyboard.JustDown(this._keyD!)) this._hero!.x += speed;
+        // Непрерывное движение при зажатой клавише
+        if (this._keyW!.isDown) this._hero!.y -= speed;
+        if (this._keyS!.isDown) this._hero!.y += speed;
+        if (this._keyA!.isDown) this._hero!.x -= speed;
+        if (this._keyD!.isDown) this._hero!.x += speed;
         
-        // Ограничиваем позицию
-        this._hero!.x = Phaser.Math.Clamp(this._hero!.x, -1100, -200);
-        this._hero!.y = Phaser.Math.Clamp(this._hero!.y, -400, 400);
+        // Границы поля — свободное движение по всему экрану
+        this._hero!.x = Phaser.Math.Clamp(this._hero!.x, -Config.GW_HALF + 30, Config.GW_HALF - 30);
+        this._hero!.y = Phaser.Math.Clamp(this._hero!.y, -Config.GH_HALF + 30, Config.GH_HALF - 30);
     }
     
     /** Отрисовка всех сущностей */
