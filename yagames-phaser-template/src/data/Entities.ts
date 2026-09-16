@@ -20,11 +20,11 @@ export abstract class Entity {
     speed: number = 100; // пикселей в секунду
     
     /** Текущая цель атаки */
-    private _target: Entity | null = null;
+    public _target: Entity | null = null;
     
     /** Таймер атаки */
-    private _attackTimer: number = 0;
-    private readonly _attackInterval: number = 1.0; // 1 секунда между атаками
+    public _attackTimer: number = 0;
+    public readonly _attackInterval: number = 1.0; // 1 секунда между атаками
     
     /** Визуальный объект (graphics) */
     graphics: Phaser.GameObjects.Graphics | null = null;
@@ -61,6 +61,7 @@ export abstract class Entity {
         let nearestDist = Infinity;
         
         for (const enemy of enemies) {
+            if (enemy.currentHp <= 0) continue;
             const dist = this.distanceTo(enemy);
             if (dist < nearestDist) {
                 nearestDist = dist;

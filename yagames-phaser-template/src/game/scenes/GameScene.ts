@@ -250,17 +250,14 @@ export default class GameScene extends Phaser.Scene {
     private updateHero() {
         if (!this._hero || !this._hero.graphics || !this._hero.hpBar || !this._hero.hpText) return;
         const d = GameData.getInstance();
-        const curHp = d.getHeroCurrentHealth();
-        const maxHp = d.getHeroHealth();
         
-        // Обновляем HP героя в сущности
-        this._hero.currentHp = curHp;
-        this._hero.maxHp = maxHp;
+        // Обновляем макс HP и урон героя
+        this._hero.maxHp = d.getHeroHealth();
         this._hero.damage = d.getHeroDamage();
         
-        // Текст HP над героем
-        this._hero.hpText.text = `${curHp}/${maxHp}`;
-        this._hero.hpText.setColor(curHp / maxHp > 0.3 ? '#33ff33' : '#ff3333');
+        // Текст HP над героем — читаем из сущности, не из GameData
+        this._hero.hpText.text = `${Math.ceil(this._hero.currentHp)}/${this._hero.maxHp}`;
+        this._hero.hpText.setColor(this._hero.getHpPercent() > 0.3 ? '#33ff33' : '#ff3333');
     }
 
     private updateWaveText() {
@@ -335,10 +332,48 @@ export default class GameScene extends Phaser.Scene {
     }
 
     private onWaveStarted() {
-        // Сбрасываем позицию героя на стартовую
-        if (this._hero) {
-            this._hero.x = HERO_START_X;
-            this._hero.y = HERO_START_Y;
+        // Перестраиваем _allies из GameData — это исправляет рассинхронизацию
+        // (юниты куплены, но графика уничтожена при смерти)
+        const gd = GameData.getInstance();
+        
+        // Очищаем старую графику союзников
+        for (const ally of this._allies) {
+            if (ally.graphics) ally.graphics.destroy();
+            if (ally.hpBar) ally.hpBar.destroy();
+            if (ally.hpText) ally.hpText.destroy();
+        }
+        this._allies = [];
+        
+        // Создаём героя заново
+        const heroStats = { hp: gd.getHeroHealth(), damage: gd.getHeroDamage() };
+        this._hero = new Ally(UnitType.Warrior, 1, HERO_START_X, HERO_START_Y, heroStats.hp, heroStats.damage);
+        this._hero.currentHp = heroStats.hp;
+        this._allies.push(this._hero);
+        
+        this._hero.graphics = this.add.graphics();
+        this._dummy.add(this._hero.graphics);
+        this._hero.hpBar = this.add.graphics();
+        this._dummy.add(this._hero.hpBar);
+        this._hero.hpText = this.add.text(HERO_START_X, HERO_START_Y - 80, '', { font: "20px Ubuntu", color: '#33ff33' })
+            .setOrigin(0.5)
+            .setStroke('#000000', 3);
+        this._dummy.add(this._hero.hpText);
+        
+        // Создаём юнитов из GameData
+        for (const unitData of gd.units) {
+            const stats = GameData.getUnitStats(unitData.type, unitData.level);
+            const ally = new Ally(unitData.type, unitData.level, HERO_START_X, Math.random() * 200 - 100, stats.hp, stats.damage);
+            ally.currentHp = stats.hp;
+            this._allies.push(ally);
+            
+            ally.graphics = this.add.graphics();
+            this._dummy.add(ally.graphics);
+            ally.hpBar = this.add.graphics();
+            this._dummy.add(ally.hpBar);
+            ally.hpText = this.add.text(ally.x, ally.y - 40, '', { font: "14px Ubuntu", color: '#33ff33' })
+                .setOrigin(0.5)
+                .setStroke('#000000', 2);
+            this._dummy.add(ally.hpText);
         }
         
         // Очищаем старых врагов
@@ -350,7 +385,6 @@ export default class GameScene extends Phaser.Scene {
         this._enemies = [];
         
         // Создаём новых врагов как сущности
-        const gd = GameData.getInstance();
         const enemyData = gd.getEnemies();
         
         const startX = 600;
@@ -405,7 +439,7 @@ export default class GameScene extends Phaser.Scene {
 
     private onWaveLost() {
         this.updateWaveText();
-        console.log('Волна проиграна — герой погиб!');
+        console.log('Волна проиграна — все союзники погибли!');
     }
 
     private onReset() {
@@ -441,12 +475,14 @@ export default class GameScene extends Phaser.Scene {
         
         // Обновляем союзников
         for (const ally of this._allies) {
-            // Герой управляется клавиатурой (только если жив)
+            // Герой управляется только клавиатурой (НЕ движется к врагам)
             if (ally === this._hero && ally.isAlive()) {
                 this.handleHeroInput(dt);
             }
-            // Остальные идут к ближайшему врагу
-            ally.update(dt, this._enemies, this);
+            // Остальные юниты идут к ближайшему врагу (только если живы)
+            if (ally !== this._hero && ally.isAlive()) {
+                ally.update(dt, this._enemies, this);
+            }
         }
         
         // Обновляем врагов
@@ -454,19 +490,15 @@ export default class GameScene extends Phaser.Scene {
             enemy.update(dt, this._allies, this);
         }
         
-        // Фильтруем мёртвых и очищаем их визуальные объекты
-        const aliveAllies: Ally[] = [];
+        // Мёртвых юнитов НЕ удаляем из массива — они возродятся на следующей волне
+        // Но уничтожаем их графику, чтобы не отображались
         for (const ally of this._allies) {
-            if (ally.isAlive()) {
-                aliveAllies.push(ally);
-            } else {
-                // Удаляем визуальные объекты мёртвого союзника
-                if (ally.graphics) ally.graphics.destroy();
-                if (ally.hpBar) ally.hpBar.destroy();
-                if (ally.hpText) ally.hpText.destroy();
+            if (!ally.isAlive()) {
+                if (ally.graphics) { ally.graphics.destroy(); ally.graphics = null; }
+                if (ally.hpBar) { ally.hpBar.destroy(); ally.hpBar = null; }
+                if (ally.hpText) { ally.hpText.destroy(); ally.hpText = null; }
             }
         }
-        this._allies = aliveAllies;
         
         const aliveEnemies: Enemy[] = [];
         for (const enemy of this._enemies) {
@@ -486,13 +518,14 @@ export default class GameScene extends Phaser.Scene {
             gd.endWave();
         }
         
-        // Проверяем поражение
-        if (this._allies.length === 0 || (this._hero && !this._hero.isAlive())) {
+        // Проверяем поражение — только когда мёртвы ВСЕ союзники
+        const anyAllyAlive = this._allies.some(a => a.isAlive());
+        if (!anyAllyAlive) {
             gd.waveLost();
         }
     }
     
-    /** Обработка ввода героя (WASD) — непрерывное движение при зажатой клавише */
+    /** Обработка ввода героя (WASD) — непрерывное движение и атака */
     private handleHeroInput(dt: number) {
         const speed = 200 * dt; // пикселей за секунду
         
@@ -505,6 +538,27 @@ export default class GameScene extends Phaser.Scene {
         // Границы поля — свободное движение по всему экрану
         this._hero!.x = Phaser.Math.Clamp(this._hero!.x, -Config.GW_HALF + 30, Config.GW_HALF - 30);
         this._hero!.y = Phaser.Math.Clamp(this._hero!.y, -Config.GH_HALF + 30, Config.GH_HALF - 30);
+        
+        // Атака героя — ищем ближайшего врага и бьём
+        const gd = GameData.getInstance();
+        const heroDamage = gd.getHeroDamage();
+        this._hero!.damage = heroDamage;
+        
+        const target = this._hero!.findNearestTarget(this._enemies);
+        if (target && target.isAlive()) {
+            const dist = this._hero!.distanceTo(target);
+            if (dist <= this._hero!.attackRange) {
+                this._hero!._attackTimer += dt;
+                if (this._hero!._attackTimer >= this._hero!._attackInterval) {
+                    this._hero!._attackTimer = 0;
+                    target.takeDamage(this._hero!.damage);
+                    
+                    if (target.currentHp <= 0 && target.onDeath) {
+                        target.onDeath(target);
+                    }
+                }
+            }
+        }
     }
     
     /** Отрисовка всех сущностей */
