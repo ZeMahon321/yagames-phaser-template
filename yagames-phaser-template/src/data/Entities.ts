@@ -35,6 +35,9 @@ export abstract class Entity {
     /** HP текст */
     hpText: Phaser.GameObjects.Text | null = null;
     
+    /** Callback при смерти сущности */
+    onDeath?: (entity: Entity) => void;
+    
     constructor(x: number, y: number, maxHp: number, damage: number) {
         this.x = x;
         this.y = y;
@@ -84,6 +87,11 @@ export abstract class Entity {
                 if (this._attackTimer >= this._attackInterval) {
                     this._attackTimer = 0;
                     target.takeDamage(this.damage);
+                    
+                    // Проверяем смерть цели
+                    if (target.currentHp <= 0 && target.onDeath) {
+                        target.onDeath(target);
+                    }
                 }
             } else {
                 // Двигаться к цели

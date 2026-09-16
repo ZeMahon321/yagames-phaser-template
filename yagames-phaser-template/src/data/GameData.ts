@@ -198,6 +198,11 @@ export class GameData extends Phaser.Events.EventEmitter {
     getEnemiesKilled(): number { return this._enemiesKilled; }
     isWaveActive(): boolean { return this._isWaveActive; }
     getEnemies() { return this._enemies; }
+    
+    /** Увеличить счётчик убитых */
+    incrementKills(count: number = 1) {
+        this._enemiesKilled += count;
+    }
 
     startWave() {
         this._isWaveActive = true;

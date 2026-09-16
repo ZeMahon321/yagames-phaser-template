@@ -333,7 +333,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     private onWaveStarted() {
-            // Очищаем старых врагов
+        // Очищаем старых врагов
         this._enemies.forEach(e => {
             if (e.graphics) e.graphics.destroy();
             if (e.hpBar) e.hpBar.destroy();
@@ -351,6 +351,18 @@ export default class GameScene extends Phaser.Scene {
         for (let i = 0; i < enemyData.length; i++) {
             const ed = enemyData[i];
             const enemy = new Enemy(ed.type, startX + i * spacing, 0, ed.maxHp, ed.damage);
+            
+            // Callback при смерти врага
+            enemy.onDeath = (entity: Enemy) => {
+                // Монеты за убийство
+                gd.addCoins(ed.coinsDrop);
+                // Увеличиваем счётчик убитых
+                gd.incrementKills(1);
+                // Удаляем визуальные объекты
+                if (entity.graphics) entity.graphics.destroy();
+                if (entity.hpBar) entity.hpBar.destroy();
+                if (entity.hpText) entity.hpText.destroy();
+            };
             
             // Графика
             enemy.graphics = this.add.graphics();
@@ -419,10 +431,6 @@ export default class GameScene extends Phaser.Scene {
         const gd = GameData.getInstance();
         if (!gd.isWaveActive()) return;
         
-        // Фильтруем мёртвых
-        this._allies = this._allies.filter(a => a.isAlive());
-        this._enemies = this._enemies.filter(e => e.isAlive());
-        
         // Обновляем союзников
         for (const ally of this._allies) {
             // Герой управляется клавиатурой
@@ -438,6 +446,33 @@ export default class GameScene extends Phaser.Scene {
             enemy.update(dt, this._allies, this);
         }
         
+        // Фильтруем мёртвых и очищаем их визуальные объекты
+        const aliveAllies: Ally[] = [];
+        for (const ally of this._allies) {
+            if (ally.isAlive()) {
+                aliveAllies.push(ally);
+            } else {
+                // Удаляем визуальные объекты мёртвого союзника
+                if (ally.graphics) ally.graphics.destroy();
+                if (ally.hpBar) ally.hpBar.destroy();
+                if (ally.hpText) ally.hpText.destroy();
+            }
+        }
+        this._allies = aliveAllies;
+        
+        const aliveEnemies: Enemy[] = [];
+        for (const enemy of this._enemies) {
+            if (enemy.isAlive()) {
+                aliveEnemies.push(enemy);
+            } else {
+                // Удаляем визуальные объекты мёртвого врага
+                if (enemy.graphics) enemy.graphics.destroy();
+                if (enemy.hpBar) enemy.hpBar.destroy();
+                if (enemy.hpText) enemy.hpText.destroy();
+            }
+        }
+        this._enemies = aliveEnemies;
+        
         // Проверяем конец волны
         if (this._enemies.length === 0 && this._allies.length > 0) {
             gd.endWave();
@@ -446,11 +481,6 @@ export default class GameScene extends Phaser.Scene {
         // Проверяем поражение
         if (this._allies.length === 0 || (this._hero && !this._hero.isAlive())) {
             gd.waveLost();
-        }
-        
-        // Обновляем данные героя в GameData
-        if (this._hero) {
-            // Герой получает урон через метод
         }
     }
     
